@@ -1,0 +1,61 @@
+# Demographic LoRA training config — SDXL + FFHQ with hybrid captions.
+# Tuned to fit a 20 GB GPU.
+
+model:
+  base: "stabilityai/stable-diffusion-xl-base-1.0"
+  vae: "madebyollin/sdxl-vae-fp16-fix"
+
+data:
+  train_manifest: "data/ffhq_train.jsonl"
+  val_manifest:   "data/ffhq_val.jsonl"
+  resolution: 1024
+
+lora:
+  rank: 32
+  alpha: 16
+  target_modules:
+    - "to_q"
+    - "to_k"
+    - "to_v"
+    - "to_out.0"
+
+training:
+  max_train_steps: 10000
+  train_batch_size: 1
+  gradient_accumulation_steps: 4
+  learning_rate: 1.0e-4
+  lr_scheduler: "cosine"
+  lr_warmup_steps: 200
+  mixed_precision: "bf16"
+  gradient_checkpointing: true
+  enable_xformers: true
+  optimizer: "adamw_8bit"
+  seed: 42
+
+ema:
+  enabled: true
+  decay: 0.9999
+
+checkpointing:
+  steps: 1000              # 10 checkpoints across 10k steps
+  output_dir: "models/demo_lora_checkpoints"
+
+mid_training_eval:
+  enabled: true
+  steps: 1000              # same cadence as checkpoints
+  prompts:
+    - "a 25 year old white woman, portrait"
+    - "a 65 year old white woman, portrait"
+    - "a 25 year old East Asian man, portrait"
+    - "a 65 year old East Asian man, portrait"
+    - "a 45 year old Black woman, portrait"
+    - "a 45 year old South Asian man, portrait"
+    - "a 80 year old Latino man, portrait"
+    - "a 35 year old Middle Eastern woman, portrait"
+  seeds: [42, 43]
+  inference_steps: 25
+  guidance_scale: 6.0
+
+logging:
+  wandb_project: "dcfaces"
+  log_every_n_steps: 50

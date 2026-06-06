@@ -1,0 +1,43 @@
+# Post-training checkpoint selection — runs Pareto-frontier eval over
+# all saved checkpoints of demo_lora. ~4 hours on a 20 GB GPU.
+
+checkpoints_dir: "models/demo_lora_checkpoints"
+use_ema_weights: true
+
+eval_prompts:
+  ages: [25, 45, 65, 80]
+  races:
+    - "white"
+    - "Black"
+    - "East Asian"
+    - "Southeast Asian"
+    - "South Asian"
+    - "Middle Eastern"
+    - "Latino"
+  genders: ["man", "woman"]
+  template: "a photo of a {age} year old {race} {gender}, professional portrait, studio lighting, neutral expression"
+  seeds: [42, 43, 44, 45]
+  # → 4 ages × 7 races × 2 genders × 4 seeds = 224 generations per checkpoint
+
+inference:
+  steps: 30
+  guidance_scale: 6.0
+  resolution: 1024
+
+metrics:
+  - mivolo_age_mae        # primary: age control
+  - fairface_race_acc     # primary: race control
+  - clip_score            # prompt alignment
+  - hpsv2                 # quality (no reference confound)
+
+# Pareto frontier on (mivolo_age_mae, fairface_race_acc).
+# Final checkpoint = on the frontier, closest to (0, 1) by Euclidean distance
+# in min-max-normalized space.
+selection:
+  method: "pareto_closest_to_ideal"
+  normalize: "minmax"
+  ideal_point: [0.0, 1.0]  # (lowest age MAE, highest race acc)
+
+output:
+  results_csv: "results/checkpoint_selection.csv"
+  pareto_figure: "results/figures/checkpoint_pareto.png"

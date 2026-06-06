@@ -1,0 +1,79 @@
+# Full benchmark: 10 identities × 4 methods × ~60 prompts × 10 seeds = ~24k generations.
+# ~40 hours on a 20 GB GPU.
+
+methods:
+  - name: "pulid_with_demo_lora"
+    description: "PuLID + demographic LoRA (the contribution)"
+    use_demo_lora: true
+    identity_method: "pulid"
+
+  - name: "pulid_only"
+    description: "PuLID without the demographic LoRA — ablation"
+    use_demo_lora: false
+    identity_method: "pulid"
+
+  - name: "photomaker"
+    description: "PhotoMaker v2 baseline"
+    use_demo_lora: false
+    identity_method: "photomaker"
+
+  - name: "ip_adapter_faceid"
+    description: "IP-Adapter FaceID Plus v2 baseline"
+    use_demo_lora: false
+    identity_method: "ip_adapter_faceid"
+
+  - name: "dreambooth_lora"
+    description: "Per-identity DreamBooth-LoRA baseline (old-school)"
+    use_demo_lora: false
+    identity_method: "dreambooth_lora"
+
+identity_gallery: "data/identity_gallery"  # 10 single-ref FFHQ identities
+
+prompts:
+  # ─── Identity-only ───
+  identity_only:
+    - "a photo of {identity}, professional portrait, studio lighting"
+    - "a photo of {identity}, outdoor natural lighting"
+
+  # ─── Demographic control (age) ───
+  age:
+    template: "a photo of a {age} year old {identity}, professional portrait"
+    ages: [20, 40, 60, 80]
+
+  # ─── Demographic control (race) ───
+  race:
+    template: "a photo of {identity}, depicted as {race}, professional portrait"
+    races:
+      - "white"
+      - "Black"
+      - "East Asian"
+      - "Southeast Asian"
+      - "South Asian"
+      - "Middle Eastern"
+      - "Latino"
+
+  # ─── Accessory control ───
+  accessory:
+    - "a photo of {identity} wearing round black glasses"
+    - "a photo of {identity} with a full beard"
+    - "a photo of {identity} with a wide smile"
+    - "a photo of {identity} wearing a baseball cap"
+    - "a photo of {identity} with long curly red hair"
+    - "a photo of {identity} with heavy eye makeup"
+
+  # ─── Compositional (stress test) ───
+  compositional:
+    - "a photo of a 70 year old {identity}, wearing round glasses, with a full beard"
+    - "a photo of a 30 year old {identity}, depicted as East Asian, smiling, wearing a hat"
+
+seeds: [42, 43, 44, 45, 46, 47, 48, 49, 50, 51]   # 10 seeds per prompt
+
+inference:
+  steps: 30
+  guidance_scale: 6.0
+  resolution: 1024
+  negative_prompt: "low quality, blurry, deformed face, distorted, cartoon, illustration, painting, 3d render"
+
+output:
+  generations_dir: "results/benchmark/generations"
+  manifest: "results/benchmark/manifest.jsonl"

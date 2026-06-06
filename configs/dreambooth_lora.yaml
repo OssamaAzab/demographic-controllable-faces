@@ -1,0 +1,35 @@
+# Per-identity DreamBooth-LoRA training config — comparison baseline.
+# Trained once per benchmark identity (~25 min each on a 20 GB GPU).
+
+model:
+  base: "stabilityai/stable-diffusion-xl-base-1.0"
+  vae: "madebyollin/sdxl-vae-fp16-fix"
+
+lora:
+  rank: 16
+  alpha: 8
+  target_modules:
+    - "to_q"
+    - "to_k"
+    - "to_v"
+    - "to_out.0"
+
+training:
+  instance_prompt: "a photo of sks person"
+  class_prompt: "a photo of a person"
+  with_prior_preservation: true
+  prior_loss_weight: 1.0
+  num_class_images: 100
+  max_train_steps: 1000
+  train_batch_size: 1
+  gradient_accumulation_steps: 1
+  learning_rate: 1.0e-4
+  lr_scheduler: "constant"
+  lr_warmup_steps: 0
+  mixed_precision: "bf16"
+  gradient_checkpointing: true
+  enable_xformers: true
+  optimizer: "adamw_8bit"
+  seed: 42
+
+output_dir: "models/dreambooth_loras"
