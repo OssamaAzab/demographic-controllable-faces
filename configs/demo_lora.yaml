@@ -1,6 +1,3 @@
-# Demographic LoRA training config — SDXL + FFHQ with hybrid captions.
-# Tuned to fit a 20 GB GPU.
-
 model:
   base: "stabilityai/stable-diffusion-xl-base-1.0"
   vae: "madebyollin/sdxl-vae-fp16-fix"
@@ -20,7 +17,7 @@ lora:
     - "to_out.0"
 
 training:
-  max_train_steps: 10000
+  max_train_steps: 15000   
   train_batch_size: 1
   gradient_accumulation_steps: 4
   learning_rate: 1.0e-4

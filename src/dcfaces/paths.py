@@ -23,7 +23,10 @@ CONFIG_DIR: Path = PROJECT_ROOT / "configs"
 CACHE_DIR: Path = PROJECT_ROOT / ".cache"
 HF_CACHE_DIR: Path = CACHE_DIR / "hf"
 
-FFHQ_RAW: Path = DATA_DIR / "ffhq_1024"
+TORCH_HOME_DIR: Path = CACHE_DIR / "torch"
+INSIGHTFACE_DIR: Path = CACHE_DIR / "insightface"
+
+FFHQ_RAW: Path = DATA_DIR / "images1024x1024"
 FFHQ_METADATA: Path = DATA_DIR / "ffhq_metadata.jsonl"
 FFHQ_TRAIN: Path = DATA_DIR / "ffhq_train.jsonl"
 FFHQ_VAL: Path = DATA_DIR / "ffhq_val.jsonl"
@@ -39,8 +42,12 @@ FIGURES_DIR: Path = RESULTS_DIR / "figures"
 TABLES_DIR: Path = RESULTS_DIR / "tables"
 
 os.environ.setdefault("HF_HOME", str(HF_CACHE_DIR))
+os.environ.setdefault("HF_HUB_CACHE", str(HF_CACHE_DIR / "hub"))
 os.environ.setdefault("HUGGINGFACE_HUB_CACHE", str(HF_CACHE_DIR / "hub"))
-os.environ.setdefault("TRANSFORMERS_CACHE", str(HF_CACHE_DIR / "hub"))
+# Keep torch.hub + insightface model downloads inside the repo too — home has
+# almost no free space on the dev machine. Mirrors .venv/bin/activate.
+os.environ.setdefault("TORCH_HOME", str(TORCH_HOME_DIR))
+os.environ.setdefault("INSIGHTFACE_HOME", str(INSIGHTFACE_DIR))
 
 
 def ensure_dirs() -> None:
@@ -51,6 +58,8 @@ def ensure_dirs() -> None:
         RESULTS_DIR,
         CACHE_DIR,
         HF_CACHE_DIR,
+        TORCH_HOME_DIR,
+        INSIGHTFACE_DIR,
         IDENTITY_GALLERY,
         DEMO_LORA_CKPTS,
         DREAMBOOTH_LORAS,
