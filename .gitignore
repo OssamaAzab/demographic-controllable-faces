@@ -61,3 +61,6 @@ Thumbs.db
 
 # local-only assistant context file
 CLAUDE.md
+
+# vendored NVlabs FFHQ downloader (CC-BY-NC-SA) - kept local, not redistributed
+scripts/download_ffhq.py
