@@ -6,6 +6,13 @@ models/*
 !models/.gitkeep
 results/*
 !results/.gitkeep
+# track the small proof artifacts, not the heavy generations
+!results/*.csv
+!results/*.json
+!results/tables/
+!results/figures/
+results/figures/*
+!results/figures/*.png
 .cache/
 *.safetensors
 *.bin
@@ -33,6 +40,10 @@ ENV/
 # Notebooks
 .ipynb_checkpoints/
 
+# local LoRA test bench (not for the repo)
+notebooks/test_lora.ipynb
+notebooks/test_output.png
+
 # Logs / tracking
 wandb/
 tensorboard/
@@ -47,3 +58,6 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# local-only assistant context file
+CLAUDE.md

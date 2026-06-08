@@ -36,6 +36,31 @@ See [PROJECT_PLAN.md](PROJECT_PLAN.md) for the full design doc.
 
 ---
 
+## Demographic LoRA — results
+
+The demographic LoRA is trained and selected (the method benchmark is still to
+run). It is a rank-32 SDXL LoRA on 36k FFHQ images with hybrid FairFace + BLIP-2
+captions. Checkpoints are chosen on a task-aware mid-training eval — the
+(age MAE, race accuracy) Pareto frontier — not validation MSE. The model overfits
+past ~4k steps, so selection kept step 4000 over the later, worse checkpoints
+([results/figures/checkpoint_pareto.png](results/figures/checkpoint_pareto.png)).
+
+Per-race control on the selected checkpoint:
+
+| Race | white | Black | East Asian | South Asian | Middle Eastern | Latino | Southeast Asian |
+|---|---|---|---|---|---|---|---|
+| Race accuracy | 1.00 | 1.00 | 1.00 | 0.94 | 0.78 | 0.44 | 0.03 |
+
+Two classes score low for different reasons. **Southeast Asian is a model
+limitation**: the token collapses to the East Asian prior (generations score 0.03
+against a 0.65 FairFace ceiling on real faces). **Latino is mostly a measurement
+artifact**: FairFace reaches only ~0.60 on real Latino faces, and the generations
+sit just below that. The disambiguation method and evidence are in
+[WRITEUP.md](WRITEUP.md) (`results/race_ceiling.csv`,
+`results/figures/sample_*.png`, `results/per_race_breakdown.json`).
+
+---
+
 ## Setup
 
 Tested on Linux + CUDA 12 + Python 3.10+, single GPU with **20 GB+ VRAM** (developed on an RTX 4000 Ada).
@@ -166,6 +191,7 @@ Face-generation systems have obvious dual-use risks (deepfakes, identity misuse)
 - Uses only public-domain identities (see `data/identity_gallery/*/metadata.json` for provenance)
 - Reports demographic groupings as a **proxy for visual phenotype**, not as a biological or cultural claim
 - Documents FFHQ's known demographic skew and its effect on results
+- Notes that the FairFace classifier used for evaluation has its own confusions (Southeast/East Asian, Latino/white), so per-class race accuracy reflects agreement with an imperfect proxy, not ground truth
 - Discusses mitigations (watermarking, attribution) that would be needed for any deployment
 
 Full ethics discussion in [WRITEUP.md](WRITEUP.md#ethics).

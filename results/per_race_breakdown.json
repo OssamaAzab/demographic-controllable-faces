@@ -1,0 +1,68 @@
+{
+  "white": {
+    "acc": 1.0,
+    "n": 32,
+    "age_mae": 4.6875,
+    "confused_as": {
+      "white": 32
+    }
+  },
+  "Black": {
+    "acc": 1.0,
+    "n": 32,
+    "age_mae": 4.375,
+    "confused_as": {
+      "Black": 32
+    }
+  },
+  "East Asian": {
+    "acc": 1.0,
+    "n": 32,
+    "age_mae": 4.0625,
+    "confused_as": {
+      "East Asian": 32
+    }
+  },
+  "Southeast Asian": {
+    "acc": 0.03125,
+    "n": 32,
+    "age_mae": 3.125,
+    "confused_as": {
+      "East Asian": 31,
+      "Southeast Asian": 1
+    }
+  },
+  "South Asian": {
+    "acc": 0.9375,
+    "n": 32,
+    "age_mae": 5.0,
+    "confused_as": {
+      "South Asian": 30,
+      "Latino": 1,
+      "Black": 1
+    }
+  },
+  "Middle Eastern": {
+    "acc": 0.78125,
+    "n": 32,
+    "age_mae": 4.0625,
+    "confused_as": {
+      "Middle Eastern": 25,
+      "Latino": 4,
+      "white": 1,
+      "South Asian": 2
+    }
+  },
+  "Latino": {
+    "acc": 0.4375,
+    "n": 32,
+    "age_mae": 5.625,
+    "confused_as": {
+      "Latino": 14,
+      "South Asian": 5,
+      "Middle Eastern": 10,
+      "East Asian": 1,
+      "white": 2
+    }
+  }
+}

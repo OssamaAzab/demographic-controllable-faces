@@ -1,0 +1,8 @@
+race,generation_acc,classifier_ceiling,n_real_val,top_real_confusion,reading
+white,1.0,0.785,2085,Latino 11%,generation at/above ceiling - control good
+Black,1.0,0.872,1556,Latino 6%,generation at/above ceiling - control good
+East Asian,1.0,0.777,1550,Southeast Asian 18%,generation at/above ceiling - control good
+Southeast Asian,0.031,0.653,1415,East Asian 22%,generation far below ceiling - model failure
+South Asian,0.938,0.745,1516,Latino 12%,generation at/above ceiling - control good
+Middle Eastern,0.781,0.689,1209,white 15%,generation at/above ceiling - control good
+Latino,0.438,0.598,1623,white 14%,"below ceiling, ceiling itself low - mostly measurement"

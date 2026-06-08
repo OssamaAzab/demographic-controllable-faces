@@ -1,557 +1,258 @@
 # Demographic-Controllable Identity-Preserving Face Generation
 
-A step-by-step project plan for v2 of the AML face-generation work. Every choice has a "why" attached. Designed to fit a single RTX 4000 Ada (20 GB VRAM), 320 GB scratch disk, ~2–3 weeks of calendar time, ~50–60 hours of GPU time.
+Design document for a benchmark of identity-preserving face-generation methods
+that also control demographic attributes (age, ethnicity, gender) and accessory
+attributes (glasses, expression, hair). The contribution is a *demographic LoRA*
+for SDXL trained on FFHQ with hybrid FairFace + BLIP-2 captions, evaluated
+alongside three established identity methods on a multi-metric suite, with an
+explicit Pareto analysis of the identity-vs-control trade-off.
 
----
+Target hardware: a single 20 GB GPU (RTX 4000 Ada). Roughly 50–60 GPU-hours end
+to end.
 
-## 0. Thesis (one sentence)
+## 1. Goal
 
-**Build a system that generates faces of a target identity while precisely controlling demographic attributes (age, ethnicity, gender) and accessory attributes (glasses, expression, hairstyle), and rigorously measure both axes against state-of-the-art baselines.**
+Given a single reference photo of a person and a prompt specifying demographic
+and accessory attributes, generate that person rendered with the requested
+attributes — and measure both identity preservation and attribute control
+against state-of-the-art baselines.
 
----
-
-## 1. Honest resume assessment — read this FIRST
-
-You asked me to be honest. Here is the honest read.
-
-### What this project is GOOD for on a resume
-- ✅ **ML Engineer / Applied Scientist roles** — shows you can take a vague problem, design a benchmark, train models, evaluate them quantitatively, and ship a demo. That's the daily job.
-- ✅ **Generative AI / Computer Vision startups** — modern stack (SDXL 2024 + PuLID 2024), end-to-end pipeline. Directly transferable.
-- ✅ **Research engineer roles** — shows the research workflow: thesis → experiments → metrics → analysis → writeup.
-- ✅ **PhD / Master's research applications** — signals you can structure a research-flavored project independently.
-- ✅ **Mid-level interview signal** — the project demonstrates: dataset preparation, training pipelines, multi-metric evaluation, Pareto analysis, ethics awareness, reproducibility. All things interviewers probe.
-
-### What this project is NOT
-- ⚠️ **Not novel research.** Demographic / attribute control via LoRA already exists (Concept Sliders, ConceptBed, attribute editing papers). You are *building and benchmarking*, not inventing. That's fine — most portfolio pieces are not novel — but don't pitch it as "I invented X." Pitch it as "I built a rigorous benchmark of identity + attribute control methods."
-- ⚠️ **Not a viral-demo project.** It's a methodical evaluation project. The demo is nice but not the headliner.
-- ⚠️ **Won't get you into FAIR / OpenAI / Anthropic research roles by itself.** Those want first-author papers. This is "engineering competence at research-quality" — strong for industry, mid for top-tier research labs.
-
-### What WOULD elevate it
-- ✅ **Open-source it as a usable library** — `pip install face-controllable` with documented APIs. Now it's not just a project; it's a tool people can use.
-- ✅ **Write a Medium / blog post** — explains the design choices, the Part B lesson, the Pareto tradeoff. Recruiters and engineers read these.
-- ✅ **Get the HF Spaces demo to ~100 likes** — visible traction signal.
-- ✅ **Workshop submission** — even a CVPR workshop paper on the benchmark would convert this from "portfolio" to "publication."
-- ✅ **Include the lessons-learned narrative** from your Part A/B/C work. "I tried full fine-tuning and learned X, so v2 uses LoRA because Y" is a story that hiring managers love. It shows growth.
-
-### Net honest verdict
-
-**Solid mid-tier portfolio project. Definitely worth doing.** Will help you stand out vs. the median ML applicant who has only "trained a ResNet on CIFAR." Will NOT by itself be a moat against top candidates with publications. Pair it with one or two other strong signals (publications, open-source traction, real impact at a previous role) and you have a competitive senior-ML-engineer profile.
-
-**Worth your 2–3 weeks? Yes — *if* you write the writeup and ship the demo.** Without those, it's a folder of code on GitHub that nobody reads. With them, it's a story you can walk an interviewer through.
-
----
-
-## 2. Hardware budget
-
-**Target GPU**: RTX 4000 Ada Generation, 20 GB VRAM, 130W TDP.
-**Disk**: 320 GB scratch (plenty of room).
-**Total compute**: ~50–60 GPU-hours over the project.
+## 2. Compute budget
 
 | Workload | VRAM | Wall-time |
 |---|---|---|
-| BLIP-2 captioning, 30k images | 12 GB | ~10 hours |
-| FairFace labeling, 30k images | 4 GB | ~50 min |
-| SDXL LoRA training (10k steps) | 17 GB | ~7 hours |
-| Inference (1024², 30 steps) | 10 GB | ~6 sec/image |
-| Full benchmark (~25k generations) | 12 GB | ~40 hours |
+| BLIP-2 + FairFace captioning, 38k images | ~12 GB | ~1.3 h |
+| FairFace + insightface gallery curation, 2k images | ~2 GB | ~7 min |
+| SDXL LoRA training, 15k steps | ~17 GB | ~16–18 h |
+| Inference (1024², 30 steps) | ~10 GB | ~3–4 s/image |
+| Full benchmark | ~12 GB | ~40 h |
 
-**Why this GPU is fine**: SDXL inference is ~10 GB; SDXL LoRA training with rank 32 + BF16 + gradient checkpointing + AdamW8bit fits in ~17 GB. FLUX would not fit. Full SDXL fine-tune would not fit either.
+SDXL inference fits in ~10 GB; rank-32 LoRA training fits in ~17 GB with bf16 +
+gradient checkpointing + 8-bit Adam + xformers. A full SDXL fine-tune (~28 GB) or
+FLUX (24 GB inference, 40 GB+ training) would not fit.
 
----
+## 3. Models
 
-## 3. Models — what we use and why
-
-### 3.1 Base model: SDXL 1.0
-- **Model**: `stabilityai/stable-diffusion-xl-base-1.0`
-- **VAE swap**: `madebyollin/sdxl-vae-fp16-fix` — the default SDXL VAE has FP16 NaN issues at inference; this fix is mandatory.
-- **Why SDXL** (not SD 1.5, not FLUX):
-  - **SD 1.5** is dated (2022). Looks weak on a 2026 resume.
-  - **FLUX** needs 24+ GB just for inference and 80 GB for training. Won't fit your GPU.
-  - **SDXL 1.0** is the sweet spot: native 1024×1024, mature ecosystem (all major identity adapters have SDXL versions), fits in 20 GB.
+### 3.1 Base: SDXL 1.0
+- `stabilityai/stable-diffusion-xl-base-1.0`
+- VAE swap to `madebyollin/sdxl-vae-fp16-fix`: the default SDXL VAE overflows
+  fp16 and produces NaN/black images; the fixed VAE is a drop-in with identical
+  quality.
+- SDXL over SD 1.5 (dated, 512²) and FLUX (too large for 20 GB): native 1024²,
+  mature adapter ecosystem, fits the GPU.
 
 ### 3.2 Identity-preservation methods (compared)
-- 🥇 **PuLID-SDXL** (primary) — encoder-based, no per-identity training, SOTA identity scores in 2024 benchmarks
-- 🥈 **PhotoMaker v2** — ByteDance, strong fallback, slightly easier to install
-- 🥉 **IP-Adapter FaceID Plus v2** — older but well-known, useful as a "well-understood baseline"
-- 🥉 **DreamBooth-LoRA per identity** — comparison baseline; the "old school" approach you used in Part C
+- **PuLID-SDXL** (primary) — encoder-based, no per-identity training.
+- **PhotoMaker v2** — encoder-based.
+- **IP-Adapter FaceID Plus v2** — adapter + face embedding.
+- **DreamBooth-LoRA** — per-identity LoRA; the classical baseline.
 
-**Why include all four**: a single-method paper looks weak. A four-method comparison with Pareto analysis tells a *story* about which method wins on which axis. That's what makes the project look like research, not a tutorial.
+A four-method comparison with a Pareto analysis tells a story about which method
+wins on which axis, rather than reporting a single method in isolation.
 
-### 3.3 Captioning model (offline, training prep)
-- **BLIP-2** (`Salesforce/blip2-opt-2.7b`) — generates the natural-language part of the hybrid caption
-- **Why BLIP-2 not BLIP-1**: BLIP-1 captions are short and generic ("a woman smiling"). BLIP-2 produces richer descriptions ("a woman with long brown hair smiling at the camera, wearing a black blazer") that give the demographic LoRA more attribute supervision.
-- **Why not LLaVA-1.5-7B**: it'd be slightly better but uses 14 GB VRAM. BLIP-2 uses 12 GB — tighter fit, still good.
+### 3.3 Captioner
+- **BLIP-2** (`Salesforce/blip2-opt-2.7b`) for the natural-language half of the
+  caption. Richer than BLIP-1; lighter than LLaVA-1.5 (which would not leave room
+  for the demographic models on a 20 GB card).
+- BLIP-2 recognizes some public figures present in FFHQ and emits names/news text
+  instead of descriptions; those captions are detected by a marker filter and
+  reduced to the demographic head, so no named entities enter training data.
 
-### 3.4 Demographic labelers (offline, eval + caption prep)
-- **Age**: **MiVOLO v2** (`iitolstykh/mivolo_v2`) — 3-year MAE, SOTA on age estimation
-- **Race + gender**: **FairFace** classifier (`dchen236/FairFace`) — 7 race classes (White, Black, East Asian, Southeast Asian, Indian, Middle Eastern, Latino), trained on a balanced corpus to reduce bias
-- **Why these specifically**: both are research-grade, not commercial APIs. Show methodological rigor. FairFace's balance-aware training is the most important: any portfolio piece touching race classification in 2026 should explicitly use a bias-aware model.
+### 3.4 Demographic labelers
+- **Race / gender / age**: the FairFace taxonomy (7 race classes, 2 genders,
+  9 age buckets), via transformers-native ViT classifiers
+  (`dima806/fairface_age_image_detection`, `dima806/fairface_gender_image_detection`,
+  `NikhilJaddu/fairface-race-vit`). The original FairFace ResNet-34 weights are
+  distributed only via Google Drive with no Hub mirror; these ViT models
+  reproduce its taxonomy and training data while remaining reliably installable.
+- **Age estimation** for checkpoint selection uses the FairFace age head
+  (bucket midpoint). MiVOLO is planned as a more precise age estimator for the
+  final benchmark metrics.
+- **Face detection / head pose** (gallery curation): insightface (buffalo_l).
 
----
+FairFace is chosen for its balance-aware training; reporting race requires a
+bias-aware model and an explicit statement of its limitations (see Ethics).
 
-## 4. Dataset — what we use and why
+## 4. Dataset
 
-### 4.1 Training data: FFHQ-1024 (30k subset)
-- **Source**: NVlabs/FFHQ, 70k images at 1024×1024
-- **Used subset**: 30k for first iteration, possibly 70k for second iteration if needed
-- **Splits** (stratified by FairFace race + age bucket):
-  - Train: 27,000
-  - Val: 1,500
-  - Test: 1,500 (also serves as FID/KID reference set)
+### 4.1 Training data: FFHQ-1024
+- Source: the official NVlabs Flickr-Faces-HQ release (Karras et al. 2019), the
+  full 70k images at 1024², for non-commercial research use.
+- v1 trains on a **40k subset**; the remaining images stay on disk for a possible
+  scale-up. Rank-32 LoRA largely saturates by 20–30k samples, so 40k gives
+  headroom without the cost of captioning all 70k.
+- FFHQ over CelebA-HQ (celebrity-skewed, narrower) and VGGFace2 (noisy): high
+  quality, diverse, Creative-Commons, and standard in the literature. Single
+  dataset for both training and benchmark identities — no second-dataset
+  confounds.
 
-**Why FFHQ**:
-- Highest-quality consumer face dataset at 1024×1024
-- Diverse (wider age + ethnicity range than CelebA-HQ)
-- Creative Commons licensed
-- Standard in face-generation papers — recruiters/reviewers recognize the name immediately
-- Modern aesthetic (Flickr 2010s, looks contemporary in 2026)
+### 4.2 Benchmark identities
+- 10 single-reference images curated from the **test split** (never seen in
+  training, so no leakage).
+- Chosen for demographic coverage: all 7 FairFace race classes, gender-balanced,
+  spread across ages. Curation ranks candidates by FairFace demographics and
+  insightface frontality (single face, low yaw/pitch, high detection score) and
+  fills target slots, relaxing constraints when a demographic is scarce in FFHQ.
+- Each identity stores one reference image plus metadata (FairFace tags, pose,
+  provenance).
+- The reference-count ablation is dropped: every identity has a single reference,
+  matching how PuLID/PhotoMaker/IP-Adapter are used in practice.
 
-**Why not CelebA-HQ for training**: celebrity-skewed, narrower age range, smaller (30k total).
-**Why not VGGFace2**: messy, quality varies, harder to curate.
-**Why not the full 70k upfront**: rank-32 LoRA saturates by ~20–30k samples. Iteration speed matters more than marginal quality for v1. We can upgrade to 70k + rank 64 if v1 shows demographic blind spots.
+## 5. Captioning — hybrid BLIP-2 + FairFace
 
-### 4.2 Benchmark identities: single-ref FFHQ-curated gallery
-- **Source**: 10 images hand-picked from the **FFHQ test split** (never seen during training, no leakage risk)
-- **Curated**: 10 identities chosen for **demographic diversity** covering FairFace's 7 race classes × both genders × age diversity
-- **Per identity**: 1 clean reference image + a `metadata.json` with FairFace tags + provenance
-
-**Why FFHQ (not CelebA-HQ)**: keeps the project to a **single dataset**, eliminates celebrity-dataset bias confounds, and avoids the consent/ethics complications of celebrity face data. FFHQ has no identity labels but we don't need them — PuLID works from a single reference image, and modern personalization papers measure identity preservation as `AdaFace(generation, reference)`, not against held-out same-identity reals.
-
-**Why curate 10 identities (not 5 or 100)**:
-- 5 = too few for statistical claims, demographic coverage gaps
-- 100 = too much compute (each adds ~4 hours of benchmark generation)
-- 10 = covers FairFace's 7 race classes, both genders, multiple ages
-
-**Trade-off accepted**: we drop the "# of reference images" ablation (1 vs 3 vs 5 vs 10) — each identity has only 1 ref. Cleaner narrative is worth losing that one experiment.
-
----
-
-## 5. Captioning pipeline — hybrid BLIP-2 + FairFace template
-
-### 5.1 The template
+Template:
 
 ```
-"a photo of a {fairface_age_bucket} year old {fairface_race} {fairface_gender}, {blip2_description}"
-
-# Example:
-# "a photo of a 30-39 year old East Asian woman, with long black hair, 
-#  wearing a white blouse, neutral expression, studio lighting"
+"a photo of a {age_bucket} year old {race} {gender}, {blip2_description}"
+e.g. "a photo of a 30-39 year old East Asian woman, with long black hair, wearing a white blouse"
 ```
 
-### 5.2 Why hybrid (not pure BLIP-2, not pure FairFace tags)
+Pure BLIP-2 gives no demographic anchor; pure FairFace tags give no visual
+variation and invite template memorization. The hybrid form supplies demographic
+tokens to respond to *and* natural attribute variety to generalize over. For each
+image: run FairFace for the demographic tags, BLIP-2 for the description, then
+combine. Output is one JSONL line per image.
 
-- **Pure BLIP-2 alone**: generic captions, no demographic specificity → LoRA never learns to respond to "age 60" or "East Asian"
-- **Pure FairFace tags alone**: structured but no visual variation → LoRA memorizes the template, loses generalization
-- **Hybrid**: structured demographic anchors **+** natural-language variation → LoRA learns to respond to demographic tokens AND to natural attribute descriptions ("with glasses", "smiling", etc.)
+## 6. Splits
 
-This is the **same lesson from Part B's attribute-caption fix**, scaled up. There, you fixed the "debiasing" issue by adding explicit attribute tags. Here, you're doing the same but with demographic tags + richer NL descriptions.
+Seeded random split of the 40k subset (90/5/5). Stratification by demographic
+is deferred to captioning, since FairFace labels do not exist before the split.
 
-### 5.3 Pipeline
-
-For each FFHQ training image:
-1. Load image at 1024×1024
-2. Run FairFace classifier → `{age_bucket, race, gender}`
-3. Run BLIP-2 → `{visual_description}`
-4. Combine via template → final caption
-5. Append to `data/ffhq_metadata.jsonl`
-
-**Compute**: 30k images × 1.2 sec/image (BLIP-2 dominant) = **~10 hours**. Run overnight.
-
----
-
-## 6. Train / Val / Test splits
-
-| Split | Size (30k) | Size (70k) | Purpose |
-|---|---|---|---|
-| Train | 27,000 | 63,000 | LoRA training |
-| Val | 1,500 | 3,500 | Training-stability loss tracking |
-| Test | 1,500 | 3,500 | FID/KID reference + final metrics |
-
-### 6.1 How splits are made
-- **Random** seeded for reproducibility
-- **Stratified** by FairFace race + age bucket (so all classes appear in val and test in proportion)
-- Done **before captioning** — test images never see the captioner's outputs in training
-
-### 6.2 Why stratify
-Vanilla random splits can leave rare demographic groups (Middle Eastern, Latino) underrepresented in val/test, making metrics noisy on those groups. Stratification guarantees ≥50 examples of every class in the test set.
-
----
-
-## 7. LoRA fine-tuning
-
-### 7.1 Method
-- **PEFT-LoRA** via `diffusers` `train_text_to_image_lora_sdxl.py` (or our extended version with EMA + mid-training task eval)
-- **What it does**: adds rank-32 low-rank adapters to SDXL's UNet attention layers. ~25M trainable parameters on top of SDXL's ~2.6B frozen parameters.
-
-### 7.2 Why LoRA (not full fine-tune)
-- **Full fine-tune of SDXL** needs 28+ GB → does not fit your 20 GB GPU
-- **Full fine-tune** also has Part B's lesson: hurts general knowledge while improving on the specific dataset
-- **LoRA** is the standard 2024–2026 approach for personalization and attribute steering. Concept Sliders, PuLID, PhotoMaker — all LoRA-based.
-- **LoRA** preserves SDXL's world knowledge while specializing for demographic responsiveness
-- **LoRA fits** in 17 GB on your GPU
-
-### 7.3 Config
-
-```python
-# Demographic LoRA (one-time training, ~7 hours)
-pretrained_model            = "stabilityai/stable-diffusion-xl-base-1.0"
-vae                         = "madebyollin/sdxl-vae-fp16-fix"
-resolution                  = 1024
-train_batch_size            = 1
-gradient_accumulation_steps = 4              # effective BS = 4
-lora_rank                   = 32
-lora_alpha                  = 16
-learning_rate               = 1e-4
-lr_scheduler                = "cosine"
-max_train_steps             = 10_000         # ~1.5 epochs over 27k images
-mixed_precision             = "bf16"
-gradient_checkpointing      = True
-optimizer                   = "AdamW8bit"
-enable_xformers             = True
-use_ema                     = True
-ema_decay                   = 0.9999
-checkpointing_steps         = 1000           # 10 checkpoints saved
-```
-
-### 7.4 Why each setting
-
-| Setting | Value | Why |
+| Split | Size | Purpose |
 |---|---|---|
-| `lora_rank` | 32 | Sweet spot. 16 = too narrow for demographic + accessory diversity; 64 = doesn't fit on 20 GB |
-| `learning_rate` | 1e-4 | Standard LoRA LR; higher diverges, lower undertrains |
-| `lr_scheduler` | cosine | Cleaner convergence than linear; standard in diffusion |
-| `max_train_steps` | 10,000 | 1.5 epochs over 27k samples; enough signal without overfitting |
-| `mixed_precision` | bf16 | Ada GPUs have strong BF16; FP16 has NaN risk |
-| `gradient_checkpointing` | True | Saves ~7 GB at the cost of ~30% slowdown — essential on 20 GB |
-| `optimizer` | AdamW8bit | bitsandbytes 8-bit Adam saves ~3 GB vs FP32 Adam |
-| `enable_xformers` | True | Memory-efficient attention, saves another ~2 GB |
-| `use_ema` | True | EMA weights are smoother and typically score better than any single step's weights |
+| Train | 36,000 | LoRA training |
+| Val | 2,000 | training-stability monitoring only |
+| Test | 2,000 | benchmark identities + FID/KID reference |
 
-### 7.5 Per-identity DreamBooth-LoRA (comparison baseline)
-- Trained per identity, ~1000 steps, rank 16, LR 1e-4
-- ~25 min per identity × 10 identities = ~4 hours total
-- Token-based binding: `"a photo of sks person"`
+## 7. LoRA training
 
-**Why include this baseline**: shows the "old school" approach from Part C as a reference point, so the writeup can quantitatively argue "encoder-based methods (PuLID) are better than per-identity LoRA on these metrics."
+PEFT LoRA on the SDXL UNet attention projections; text encoders frozen.
 
----
+| Setting | Value | Rationale |
+|---|---|---|
+| rank / alpha | 32 / 16 | capacity for demographic + accessory diversity; α/r = 0.5 keeps updates conservative |
+| target modules | `to_q,to_k,to_v,to_out.0` | attention is where text conditioning enters the UNet |
+| learning rate | 1e-4, cosine, 200 warmup | standard LoRA LR; warmup avoids early instability |
+| steps | 15,000 (~1.7 epochs) | ceiling; the best checkpoint is selected afterward |
+| batch | 1 × grad-accum 4 | effective batch 4 within the VRAM budget |
+| precision | bf16 weights, fp32 LoRA params (autocast) | bf16 avoids fp16 NaNs; fp32 params for stable Adam |
+| memory | gradient checkpointing, AdamW8bit, xformers | fits ~17 GB on a 20 GB card |
+| EMA | decay 0.9999 | smoother weights; the EMA copy is what gets saved |
 
-## 8. Checkpoint selection — the Part B lesson applied
+This trains ~46 M LoRA parameters on top of SDXL's ~2.6 B frozen weights, so the
+base model's general capabilities are preserved while it specializes for
+demographic responsiveness. A full fine-tune was avoided: it does not fit the
+GPU and tends to degrade general knowledge.
 
-### 8.1 What we do NOT do
-- ❌ Pick the best checkpoint based on validation MSE. **Part B taught us this is wrong.** Val-MSE measures denoising accuracy, not task performance.
+Per-identity DreamBooth-LoRA baselines (rank 16, ~1000 steps each, token-based
+binding) are trained separately for the comparison.
 
-### 8.2 What we DO do — task-aware mid-training eval
+## 8. Checkpoint selection
 
-Every 1000 training steps, alongside the checkpoint save:
+Validation reconstruction loss (MSE) measures denoising accuracy, not whether the
+model performs the target task; selecting on it can pick a checkpoint that every
+downstream metric disagrees with. Selection is therefore task-aware:
 
-```python
-TINY_VAL_PROMPTS = [
-    "a 25 year old white woman, portrait",
-    "a 65 year old white woman, portrait",
-    "a 25 year old East Asian man, portrait",
-    "a 65 year old East Asian man, portrait",
-    "a 45 year old Black woman, portrait",
-    "a 45 year old South Asian man, portrait",
-    "a 80 year old Latino man, portrait",
-    "a 35 year old Middle Eastern woman, portrait",
-]  # 8 prompts × 2 seeds = 16 generations, ~2 min on your GPU
+- **During training** (every 1000 steps): generate a small fixed prompt set and
+  score age MAE (FairFace) and race accuracy (FairFace). This gives a plottable
+  "attribute responsiveness over training" curve. Validation MSE is logged for
+  stability monitoring only, never for selection.
+- **After training**: evaluate every saved checkpoint on a larger grid
+  (4 ages × 7 races × 2 genders × 4 seeds) and pick the checkpoint on the
+  **Pareto frontier** of (age MAE ↓, race accuracy ↑) closest to the ideal
+  corner. Pareto keeps the trade-off explicit rather than hiding it in a weighted
+  composite.
 
-tiny_age_mae   = MiVOLO(generations).mae_vs_prompted_age()
-tiny_race_acc  = FairFace(generations).accuracy_vs_prompted_race()
-log({'step': step, 'tiny_age_mae': tiny_age_mae, 'tiny_race_acc': tiny_race_acc})
-```
-
-### 8.3 Why this works (and val-MSE doesn't)
-- Directly measures the **task** the model is trying to learn
-- Detects task-overfitting (when the curve plateaus or reverses)
-- Gives a plottable "attribute responsiveness over training" curve for the writeup
-- Adds only ~20 min total across the 7-hour training run
-
-### 8.4 Final checkpoint selection: Pareto frontier
-
-After training, run a larger eval on the 10 saved checkpoints:
-- 56 prompts (4 ages × 7 races × 2 genders)
-- 4 seeds per prompt
-- = 224 generations per checkpoint × ~6 sec = ~22 min per checkpoint
-- × 10 checkpoints = ~4 hours of post-training eval
-
-Score each checkpoint on:
-| Metric | Why |
-|---|---|
-| MiVOLO age MAE | Primary task: did age control work? |
-| FairFace race acc | Primary task: did race control work? |
-| CLIP-Score | Did the image match the prompt overall? |
-| HPSv2 | Is the image quality good? |
-
-**Plot Pareto frontier** of (age MAE, race acc). Pick a checkpoint on the frontier matching your priorities (likely balanced).
-
-### 8.5 Why Pareto (not composite score)
-- Pareto is **transparent about the tradeoff**: "we picked the checkpoint that gives X age MAE for Y race acc"
-- Composite-score weighting is opaque and arbitrary
-- Pareto plots are paper-quality figures
-- Reviewers and recruiters prefer explicit tradeoffs to hidden weights
-
----
-
-## 9. Inference pipeline
+## 9. Inference stack
 
 ```
-Reference photo(s) of target identity
-              │
-              ▼
-        PuLID encoder ──► identity embedding
-                                │
-                                ▼
-                    ┌───────────────────────┐
-                    │ SDXL base             │
-                    │ + demographic LoRA    │  ◄── prompt: "a 60 year old
-                    │ + PuLID adapter       │      East Asian woman with
-                    │                       │      glasses, smiling"
-                    └───────────────────────┘
-                                │
-                                ▼
-                       1024×1024 image
+reference photo ─► PuLID encoder ─► identity embedding
+                                          │
+                  prompt ─► SDXL base + demographic LoRA + PuLID adapter ─► 1024² image
 ```
 
-### Why this stack
-- **SDXL base** (frozen) — provides general image quality
-- **Demographic LoRA** — interprets attribute words ("60 year old", "East Asian", "glasses")
-- **PuLID** — enforces identity from reference photo
-- Each component has a single, decouplable job
+SDXL provides image quality, the demographic LoRA interprets attribute tokens,
+and the identity method enforces likeness — each component with a separable job.
 
----
-
-## 10. Metrics suite
-
-| # | Metric | Library | Measures | Why |
-|---|---|---|---|---|
-| 1 | **AdaFace cossim** | `mk-minchul/AdaFace` | Identity preservation | Primary identity metric; 2022 SOTA, more discriminative than ArcFace |
-| 2 | **ArcFace cossim** | `insightface` | Identity preservation | Secondary; comparability with prior literature |
-| 3 | **MiVOLO age MAE** | `iitolstykh/mivolo_v2` | Age controllability | "Age 60" → 60? |
-| 4 | **FairFace race acc** | `dchen236/FairFace` | Race controllability | "East Asian" → East Asian? |
-| 5 | **CelebA attribute classifier** | pretrained CelebA-HQ-attribute classifier (model only, no dataset dependency) | Accessory control (glasses, hat, beard) | "Glasses" → glasses? |
-| 6 | **CLIP zero-shot accessory** | CLIP cosine | Accessory control (any attribute) | Cheap, no extra model |
-| 7 | **CLIP-Score** | `openai/clip-vit-large` | Prompt alignment | Generic text-image agreement |
-| 8 | **HPSv2** | `tgxs002/HPSv2` | Learned human preference | Quality without reference dataset confound |
-| 9 | **PickScore** | `yuvalkirstain/PickScore_v1` | Learned human preference | Second human-pref signal |
-| 10 | **CLIP-FID** | `cleanfid` | Distribution match (CLIP features) | Less aesthetic-bound than Inception FID |
-| 11 | **KID** | `cleanfid` | Distribution match, sample-efficient | More stable on small N than FID |
-| 12 | **DreamSim** | `ssundaram21/dreamsim` | Perceptual similarity to reference | Face-aware perceptual sim |
-
-### 10.1 Why this many metrics
-
-Each measures a different axis. The benchmark table tells a story only if multiple axes are covered:
+## 10. Metrics
 
 | Axis | Metrics |
 |---|---|
-| Identity preservation | AdaFace, ArcFace |
-| Demographic control | MiVOLO, FairFace |
-| Accessory control | CelebA classifier, CLIP zero-shot |
+| Identity preservation | AdaFace, ArcFace cosine similarity |
+| Age control | MiVOLO age MAE |
+| Race control | FairFace accuracy |
+| Accessory control | CelebA attribute classifier, CLIP zero-shot |
 | Prompt alignment | CLIP-Score |
-| Generic quality | HPSv2, PickScore |
-| Distribution match | CLIP-FID, KID |
-| Perceptual sim | DreamSim |
+| Quality (no reference) | HPSv2, PickScore |
+| Distribution match | CLIP-FID, KID (face-cropped) |
+| Perceptual similarity | DreamSim |
 
-### 10.2 What we DON'T report
-- ❌ **val-MSE** as a quality metric (Part B's lesson)
-- ❌ **Vanilla Inception FID without face cropping** — aesthetic mismatch with FFHQ would dominate; we use CLIP-FID + KID with face crops instead
+Inception FID without face cropping is avoided: aesthetic mismatch with FFHQ
+would dominate it. FID/KID use face-cropped, aligned 224² inputs.
 
-### 10.3 Preprocessing for FID/KID
-Both generations and reference are **face-cropped to 224×224 aligned** before feature extraction. Removes background/framing confounds. This is the practice in modern personalization papers.
+## 11. Experiments
 
----
-
-## 11. Experiments — the resume table
-
-| # | Experiment | What it shows |
+| # | Experiment | Shows |
 |---|---|---|
-| 1 | **Method comparison**: PuLID vs PhotoMaker vs IP-Adapter FaceID vs DreamBooth-LoRA | Which identity method wins overall |
-| 2 | **Demographic control — age**: target ID at age {20, 40, 60, 80} | MiVOLO MAE per method, identity retention |
-| 3 | **Demographic control — race**: target ID across 7 FairFace classes | FairFace acc, AdaFace retention |
-| 4 | **Accessory control**: glasses, hat, beard, smile, makeup | CelebA classifier + CLIP zero-shot |
-| 5 | **Identity-vs-control Pareto frontier** | The central tradeoff figure |
-| ~~6~~ | ~~Reference ablation~~ | **DROPPED**: single-ref FFHQ identities (no multi-ref available). May add in v2 with curated multi-photo identities. |
-| 7 | **demo-LoRA ablation**: with vs without | Does the LoRA actually help? |
-| 8 | **Memorization audit**: ArcFace(gen vs train) ≤ ArcFace(gen vs ref) | Same bar as Part B |
-| 9 | **Failure analysis**: worst-quartile examples per method | Qualitative honesty |
+| 1 | Method comparison (PuLID / PhotoMaker / IP-Adapter / DreamBooth) | which identity method wins overall |
+| 2 | Age control at {20, 40, 60, 80} | age MAE per method, identity retention |
+| 3 | Race control across the 7 classes | race accuracy, identity retention |
+| 4 | Accessory control (glasses, hat, beard, smile, makeup) | attribute classifier + CLIP |
+| 5 | Identity-vs-control Pareto frontier | the central trade-off figure |
+| 6 | demo-LoRA ablation (with vs without) | does the LoRA help? |
+| 7 | Memorization audit | generations resemble references, not training images |
+| 8 | Failure analysis | worst-quartile examples per method |
 
-### 11.1 The headline figure
-**Experiment 5** — the Pareto plot of identity retention vs attribute control strength. This is the most publishable-looking figure in the project. It directly visualizes the central tradeoff in personalized generation. Get this right; everything else is supporting.
+Experiment 5 (the Pareto plot) is the headline figure. Benchmark scope is the
+five method configurations × 10 identities × the prompt set × multiple seeds,
+defined exactly in `configs/benchmark.yaml`.
 
-### 11.2 Total benchmark scope
-- 10 identities × 4 methods × ~60 prompts × 10 seeds = **24,000 generations**
-- @ 6 sec/gen = **~40 hours of GPU time**
-
----
-
-## 12. Two-week milestone plan
-
-| Week | Day | Task | Output |
-|---|---|---|---|
-| W1 | 1 | Env setup, FFHQ download, identity gallery curation | Working pipeline, FFHQ on disk |
-| W1 | 2 | `scripts/03_build_identity_gallery.py` — curate 10 FFHQ-test-split identities | `data/identity_gallery/` |
-| W1 | 3 | `scripts/split_ffhq.py` — stratified train/val/test | 3 jsonl manifests |
-| W1 | 4 | `scripts/caption_ffhq.py` — BLIP-2 + FairFace pipeline (overnight) | `data/ffhq_metadata.jsonl` |
-| W1 | 5 | Demographic LoRA training (overnight + day) | `models/demo_lora.safetensors` + 10 checkpoints |
-| W1 | 6 | `scripts/eval_checkpoints.py` — Pareto on 10 checkpoints | Best checkpoint selected |
-| W1 | 7 | DreamBooth-LoRA per identity (5–10 identities) | 10 LoRA files |
-| W2 | 8–10 | Full benchmark: 24k generations across 4 methods | `results.csv` |
-| W2 | 11 | Analysis: plots, tables, failure analysis | `figures/`, `tables/` |
-| W2 | 12 | `WRITEUP.md` + README | Project narrative |
-| W2 | 13 | Gradio demo + HuggingFace Spaces deploy | Live demo URL |
-| W2 | 14 | Polish, push to GitHub | Public repo |
-
----
-
-## 13. Repository layout
+## 12. Repository layout
 
 ```
 demographic-controllable-faces/
-├── README.md                    # hero figure + results table + demo link
-├── WRITEUP.md                   # full narrative — thesis + findings + limitations
-├── PROJECT_PLAN.md              # this document
-├── requirements.txt             # pinned versions
-├── Makefile                     # `make caption`, `make train`, `make bench`
-├── LICENSE                      # MIT or Apache-2.0
-├── configs/
-│   ├── demo_lora.yaml
-│   ├── dreambooth_lora.yaml
-│   └── checkpoint_selection.yaml
-├── data/
-│   ├── ffhq_metadata.jsonl
-│   ├── ffhq_train.jsonl
-│   ├── ffhq_val.jsonl
-│   ├── ffhq_test.jsonl
-│   └── identity_gallery/
-│       ├── id_001/{refs/, holdout/, metadata.json}
-│       └── ... (id_002 through id_010)
-├── scripts/
-│   ├── build_identity_gallery.py
-│   ├── split_ffhq.py
-│   ├── caption_ffhq.py
-│   ├── train_demo_lora.py
-│   ├── train_dreambooth_lora.py
-│   ├── eval_checkpoints.py
-│   ├── benchmark.py
-│   └── compute_metrics.py
-├── notebooks/
-│   ├── 01_explore_ffhq.ipynb
-│   ├── 02_caption_audit.ipynb
-│   ├── 03_analyze_results.ipynb
-│   └── 04_failure_cases.ipynb
-├── models/
-│   ├── demo_lora.safetensors
-│   └── dreambooth_lora/
-├── results/
-│   ├── results.csv
-│   ├── figures/
-│   └── tables/
-└── demo/
-    └── app.py                   # Gradio
+├── README.md / WRITEUP.md / PROJECT_PLAN.md
+├── pyproject.toml / requirements.txt / Makefile / LICENSE
+├── configs/            # all hyperparameters as YAML
+├── src/dcfaces/        # importable package (paths, data, captioning, training, inference, metrics)
+├── scripts/            # numbered runnables, 01–09, executed in order
+├── notebooks/          # exploration + analysis
+├── tests/              # path-portability checks
+├── data/ models/ results/   # gitignored, regenerated by the pipeline
+└── demo/app.py         # Gradio demo
 ```
 
-### Why this layout
-- `scripts/` and `notebooks/` separated: scripts are reproducible runnables, notebooks are exploratory.
-- `configs/` makes hyperparameters first-class — reviewers can audit the exact training config.
-- `Makefile` documents the pipeline (`make caption && make train && make bench`).
-- `WRITEUP.md` separate from README: README is the elevator pitch, WRITEUP is the narrative.
+Scripts are reproducible runnables; notebooks are exploratory. Hyperparameters
+live in `configs/` so the exact training setup is auditable.
 
----
+## 13. Ethics
 
-## 14. Ethics section (mandatory in 2026 for face-gen projects)
+To be documented in `WRITEUP.md`:
 
-Include in `WRITEUP.md`:
+1. Race classification is a coarse visual proxy, not a biological or cultural
+   claim; the FairFace categories and their limitations are stated explicitly.
+2. Identities are drawn from FFHQ (Creative-Commons), with provenance recorded.
+3. FFHQ's demographic skew (younger, Western-leaning) is documented along with
+   its effect on results.
+4. Controllable face generation carries deepfake/identity-misuse risk;
+   deployment mitigations (watermarking, attribution) are discussed.
+5. Compute footprint (GPU-hours, estimated energy) is reported.
 
-1. **Race classification limitations** — FairFace's 7 categories are coarse and reflect a social/visual construct, not biological reality.
-2. **Identity consent** — only public-domain identities, sources cited, no private faces.
-3. **Training data bias** — FFHQ skews younger / Western; document this and its effect on results.
-4. **Dual-use risk** — controllable face generation has obvious misuse potential (deepfakes, identity fraud). Discuss what mitigations would be needed for deployment (watermarking, attribution).
-5. **Compute footprint** — log GPU hours, estimate kWh and CO2. Show awareness.
+## 14. Reproducibility
 
-**Why mandatory**: In 2026, any face-gen project missing an ethics section reads as careless. Recruiters at AI safety teams, responsible-AI teams, and any major AI lab actively look for this.
+- Pinned `requirements.txt`.
+- Seeded splits and training (`--seed 42`).
+- Configs committed as YAML.
+- `Makefile` documents the pipeline stages.
+- Eval prompt sets versioned.
+- Model artifacts uploaded to the Hub where size permits, otherwise noted.
 
----
-
-## 15. Reproducibility checklist
-
-- ✅ Pinned `requirements.txt` (every package + version)
-- ✅ Seed-controlled splits (`split_ffhq.py` accepts `--seed 42`)
-- ✅ Configs in YAML, committed
-- ✅ `Makefile` documents the full pipeline
-- ✅ Random seeds documented in `WRITEUP.md`
-- ✅ HF Hub model artifacts uploaded (or noted as too-large)
-- ✅ Eval prompts versioned (`eval_prompts_v1.jsonl`)
-- ✅ Wandb / Tensorboard logs preserved
-
----
-
-## 16. Risks and failure modes
-
-Document these honestly in the writeup. Recruiters can tell when projects are sanitized vs honest.
+## 15. Limitations and risks
 
 | Risk | Mitigation |
 |---|---|
-| Demographic LoRA underperforms on rare classes | Upgrade to 70k FFHQ + rank 64 |
-| BLIP-2 captions are too repetitive | Add LLaVA-1.5 as fallback captioner |
-| PuLID fails on certain ethnicities | Document the gap in writeup; don't hide |
-| GPU thermal-throttles during long runs | `nvidia-smi` monitoring; chunk benchmark into 2-hour batches |
-| Memorization on common celebrity identities | The Part B memorization audit catches this |
-| FFHQ download is slow / interrupted | Resumable download, cache to scratch |
-| FID metrics flatter LoRA-tuned models for wrong reasons | Use CLIP-FID + KID, face-crop preprocessing, report multiple references |
-
----
-
-## 17. Locked-in decisions
-
-After all the discussion, these are committed:
-
-- ✅ **Base**: SDXL 1.0 + `sdxl-vae-fp16-fix`
-- ✅ **Identity methods**: PuLID (primary) + PhotoMaker + IP-Adapter FaceID v2 + DreamBooth-LoRA (baseline)
-- ✅ **Training data**: FFHQ-1024, 30k subset for v1
-- ✅ **Single-dataset rule**: FFHQ for training + benchmark identities (NO CelebA-HQ dependency)
-- ✅ **Benchmark identities**: 10 single-ref identities curated from the FFHQ test split, demographically diverse
-- ✅ **Splits**: 27k / 1.5k / 1.5k, stratified by FairFace
-- ✅ **Captioning**: hybrid BLIP-2 + FairFace template
-- ✅ **LoRA config**: rank 32, BF16, grad-ckpt, AdamW8bit, EMA, 10k steps
-- ✅ **Checkpoint selection**: mid-training task eval + post-training Pareto frontier (NOT val-MSE)
-- ✅ **Metrics**: 10-metric suite, face-cropped FID/KID
-- ✅ **Benchmark**: 10 identities × 4 methods × ~60 prompts × 10 seeds = 24k generations
-- ✅ **Project path**: `/scratch/demographic-controllable-faces/`
-- ✅ **GitHub repo name**: `demographic-controllable-faces`
-- ✅ **Ethics section**: mandatory
-- ✅ **Demo**: Gradio on HF Spaces
-
----
-
-## 18. What's NEXT (concrete day-1 actions)
-
-If you commit to this plan, here's the day-1 to-do:
-
-1. ✅ Project location locked at `/scratch/demographic-controllable-faces/`
-2. Write `scripts/02_split_ffhq.py` — stratified train/val/test split
-3. Write `scripts/03_build_identity_gallery.py` — curate 10 FFHQ-test-split identities
-4. Start FFHQ download (parallel to script writing)
-5. By end of day-1: `data/identity_gallery/` populated, splits ready, FFHQ downloading overnight
-
----
-
-## 19. Honest closing note
-
-**Will doing this project change your life?** No.
-
-**Will it look meaningfully better on your resume than "fine-tuned BERT for sentiment classification"?** Yes, by a lot.
-
-**Will it be a unique signal vs other ML candidates with portfolio projects?** Only if you:
-1. Actually ship the demo
-2. Write the writeup with the lessons-learned narrative
-3. Get it on GitHub publicly with clean code
-4. Mention it in interviews as the place you learned the val-MSE / Pareto / Part B lessons
-
-The technical work is half. The presentation is the other half. Don't skip the writeup.
-
-If you do all of it: you have a solid Generative AI / Computer Vision portfolio piece that demonstrates research thinking + engineering competence + ethics awareness. That's a strong signal.
-
-If you just train the LoRA and don't write it up: it's just another folder of code on GitHub.
-
-The choice is yours. Commit if you're going to commit.
+| LoRA underperforms on rare demographics | scale to 70k / higher rank |
+| BLIP-2 captions repetitive or name-leaking | marker filter; LLaVA fallback if needed |
+| Identity method weak on some ethnicities | document the gap rather than hide it |
+| Long runs thermally throttle | chunk into shorter batches, monitor |
+| FID flatters LoRA models for the wrong reason | CLIP-FID + KID with face crops |
