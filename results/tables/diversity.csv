@@ -1,0 +1,9 @@
+method,seed_diversity
+photomaker,0.32154745757579806
+ip_adapter_faceid,0.2816926392912865
+pulid_delayed,0.2187456923723221
+hyperlora,0.210178145468235
+pulid_only,0.20995104789733884
+dreambooth_lora,0.20396495044231414
+dreambooth_lora_with_demo,0.12398251503705977
+pulid_with_demo_lora,0.11201772212982178

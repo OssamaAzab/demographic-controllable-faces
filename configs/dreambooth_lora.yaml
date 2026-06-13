@@ -18,12 +18,12 @@ training:
   # {gender} is filled per identity from its metadata (man/woman), so the class
   # set matches the subject and the instance/class share the same noun.
   instance_prompt: "a photo of sks {gender}"
-  class_prompt: "a realistic photo of a {gender}, natural lighting, sharp focus"
+  class_prompt: "a realistic photo of a {gender}, natural lighting"
   with_prior_preservation: true
   prior_loss_weight: 1.0
   num_class_images: 100            # per gender; a man set and a woman set
   class_inference_steps: 50
-  class_negative_prompt: "deformed, distorted, disfigured, mutated, bad anatomy, extra limbs, extra fingers, ugly, blurry, low quality, lowres, jpeg artifacts, grainy, cartoon, anime, illustration, painting, sketch, 3d render, cgi, monochrome, black and white, multiple faces, multiple people"
+  class_negative_prompt: "deformed, distorted, disfigured, mutated, bad anatomy, extra limbs, extra fingers, blurry, low quality, jpeg artifacts, grainy, cartoon, anime, illustration, painting, sketch, 3d render, cgi, monochrome, black and white, multiple faces, multiple people"
   instance_flip: true              # random horizontal flip of the single reference (augmentation)
   max_train_steps: 1000
   train_batch_size: 1

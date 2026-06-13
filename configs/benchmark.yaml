@@ -1,31 +1,66 @@
-# Full benchmark: 10 identities × 4 methods × ~60 prompts × 10 seeds = ~24k generations.
-# ~40 hours on a 20 GB GPU.
+# Full benchmark: 10 identities × the method configs below × prompt set × seeds.
+# Total generation count is determined by this file; budget ~40 h on a 20 GB GPU.
+
+model:
+  base: "stabilityai/stable-diffusion-xl-base-1.0"
+  vae: "madebyollin/sdxl-vae-fp16-fix"
 
 methods:
   - name: "pulid_with_demo_lora"
     description: "PuLID + demographic LoRA (the contribution)"
     use_demo_lora: true
     identity_method: "pulid"
+    id_scale: 0.8
+    demo_scale: 0.7
 
   - name: "pulid_only"
     description: "PuLID without the demographic LoRA — ablation"
     use_demo_lora: false
     identity_method: "pulid"
+    id_scale: 0.8
+
+  - name: "pulid_delayed"
+    description: "PuLID with delayed identity injection — rescues surface demographic (race) control by letting the prompt set demographics before identity refines"
+    use_demo_lora: false
+    identity_method: "pulid"
+    id_scale: 0.8
+    delay_start: 13   # of 30 steps; sweet spot from the start_step sweep (race acc ~0.6 @ identity ~0.69)
 
   - name: "photomaker"
     description: "PhotoMaker v2 baseline"
     use_demo_lora: false
     identity_method: "photomaker"
+    start_merge_step: 10
 
   - name: "ip_adapter_faceid"
     description: "IP-Adapter FaceID Plus v2 baseline"
     use_demo_lora: false
     identity_method: "ip_adapter_faceid"
+    ip_scale: 1.0
+    s_scale: 1.0
 
   - name: "dreambooth_lora"
     description: "Per-identity DreamBooth-LoRA baseline (old-school)"
     use_demo_lora: false
     identity_method: "dreambooth_lora"
+    id_scale: 0.5
+
+  - name: "dreambooth_lora_with_demo"
+    description: "DreamBooth-LoRA identity + demographic LoRA stacked — tests whether the demo LoRA generalizes past PuLID"
+    use_demo_lora: true
+    identity_method: "dreambooth_lora"
+    id_scale: 0.5
+    demo_scale: 0.3
+
+  - name: "hyperlora"
+    description: "HyperLoRA (ByteDance, zero-shot hypernetwork ID-LoRA). GPL-3.0 code + CC-BY-NC models; external install, not vendored."
+    use_demo_lora: false
+    identity_method: "hyperlora"
+    # base-model exception: HyperLoRA is incompatible with vanilla SDXL 1.0, so it
+    # runs on RealVisXL v4.0 (its recommended base). Noted as a caveat in the writeup.
+    base: "SG161222/RealVisXL_V4.0"
+    lora_scale: 0.8
+    clip_skip: 2
 
 identity_gallery: "data/identity_gallery"  # 10 single-ref FFHQ identities
 
@@ -66,13 +101,13 @@ prompts:
     - "a photo of a 70 year old {identity}, wearing round glasses, with a full beard"
     - "a photo of a 30 year old {identity}, depicted as East Asian, smiling, wearing a hat"
 
-seeds: [42, 43, 44, 45, 46, 47, 48, 49, 50, 51]   # 10 seeds per prompt
+seeds: [42, 43, 44, 45, 46]   # 5 seeds per prompt (paired across methods)
 
 inference:
   steps: 30
   guidance_scale: 6.0
   resolution: 1024
-  negative_prompt: "low quality, blurry, deformed face, distorted, cartoon, illustration, painting, 3d render"
+  negative_prompt: "low quality, blurry, deformed face, distorted, cartoon, illustration, painting, 3d render, monochrome, grayscale, black and white, desaturated, sepia, faded colors"
 
 output:
   generations_dir: "results/benchmark/generations"

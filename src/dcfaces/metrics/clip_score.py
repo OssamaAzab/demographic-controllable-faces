@@ -27,3 +27,17 @@ class CLIPScorer:
         img = out.image_embeds / out.image_embeds.norm(dim=-1, keepdim=True)
         txt = out.text_embeds / out.text_embeds.norm(dim=-1, keepdim=True)
         return float((img * txt).sum(dim=-1).item())
+
+    @torch.no_grad()
+    def zero_shot(self, image: Image.Image, texts: list[str]) -> list[float]:
+        """Softmax CLIP probabilities over `texts` for one image (zero-shot).
+
+        Used for accessory control: a [positive, negative] pair gives the
+        probability that the requested accessory is present.
+        """
+        inputs = self.processor(
+            text=texts, images=[image.convert("RGB")],
+            return_tensors="pt", padding=True, truncation=True,
+        ).to(self.device)
+        probs = self.model(**inputs).logits_per_image.softmax(dim=-1)[0]
+        return [float(p) for p in probs]

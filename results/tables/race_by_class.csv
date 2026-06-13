@@ -1,0 +1,9 @@
+method,Black,East Asian,Latino,Middle Eastern,South Asian,Southeast Asian,white
+dreambooth_lora,0.34,0.44,0.3,0.52,0.28,0.1,0.2
+dreambooth_lora_with_demo,0.22,0.28,0.18,0.32,0.28,0.14,0.2
+hyperlora,0.48,0.42,0.42,0.8,0.32,0.0,0.26
+ip_adapter_faceid,0.24,0.36,0.1,0.22,0.14,0.16,0.24
+photomaker,0.24,0.32,0.14,0.56,0.04,0.02,0.56
+pulid_delayed,0.24,0.36,0.24,0.28,0.26,0.02,0.24
+pulid_only,0.2,0.3,0.14,0.3,0.24,0.06,0.2
+pulid_with_demo_lora,0.1,0.32,0.12,0.16,0.2,0.08,0.2

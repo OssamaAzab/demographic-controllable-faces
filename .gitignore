@@ -42,7 +42,9 @@ ENV/
 
 # local LoRA test bench (not for the repo)
 notebooks/test_lora.ipynb
+notebooks/test_dreambooth.ipynb
 notebooks/test_output.png
+db_test*.png
 
 # Logs / tracking
 wandb/
@@ -64,3 +66,19 @@ CLAUDE.md
 
 # vendored NVlabs FFHQ downloader (CC-BY-NC-SA) - kept local, not redistributed
 scripts/download_ffhq.py
+
+# external method repos (PuLID, HyperLoRA, ...) - cloned locally, imported not vendored
+external/
+
+# throwaway smoke-test / download helper scripts (not part of the package)
+smoke_*.py
+dl_*.py
+.metric_constraints.txt
+sweep_*.py
+notebooks/test_*.ipynb
+
+# stray local artifacts
+.hf_cache/
+db_*.png
+color_test.py
+.venv-mivolo/
