@@ -13,6 +13,13 @@ results/*
 !results/figures/
 results/figures/*
 !results/figures/*.png
+
+# benchmark: track the per-image scores + manifest (lets aggregation rerun without
+# regenerating the 13 GB of images), but not the generations themselves
+!results/benchmark/
+results/benchmark/*
+!results/benchmark/*.jsonl
+!results/benchmark/*.json
 .cache/
 *.safetensors
 *.bin
