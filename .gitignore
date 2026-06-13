@@ -70,10 +70,9 @@ scripts/download_ffhq.py
 # external method repos (PuLID, HyperLoRA, ...) - cloned locally, imported not vendored
 external/
 
-# throwaway smoke-test / download helper scripts (not part of the package)
+# throwaway smoke-test / download helper scripts (superseded by scripts/00_fetch_weights.py)
 smoke_*.py
 dl_*.py
-.metric_constraints.txt
 sweep_*.py
 notebooks/test_*.ipynb
 

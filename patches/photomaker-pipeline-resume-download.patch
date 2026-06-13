@@ -1,0 +1,12 @@
+diff --git a/photomaker/pipeline.py b/photomaker/pipeline.py
+index fde8512..841fb4d 100755
+--- a/photomaker/pipeline.py
++++ b/photomaker/pipeline.py
+@@ -198,7 +198,6 @@ class PhotoMakerStableDiffusionXLPipeline(StableDiffusionXLPipeline):
+                 weights_name=weight_name,
+                 cache_dir=cache_dir,
+                 force_download=force_download,
+-                resume_download=resume_download,
+                 proxies=proxies,
+                 local_files_only=local_files_only,
+                 token=token,

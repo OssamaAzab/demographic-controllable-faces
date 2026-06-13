@@ -129,12 +129,15 @@ Ada). All data/model/output paths auto-detect from the repo root via
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -e . && pip install -r requirements.txt
+scripts/setup_external.sh        # clone + patch the external method repos
+python scripts/00_fetch_weights.py   # download pretrained weights
+scripts/setup_mivolo_venv.sh     # isolated venv for the MiVOLO age metric
 ```
 
 The external identity methods (PuLID, IP-Adapter, PhotoMaker, HyperLoRA, AdaFace,
-MiVOLO) are cloned under `external/` and imported, not vendored; weights download to
-the in-repo cache. MiVOLO uses a separate `.venv-mivolo` (see
-`scripts/09b_mivolo_age.py`).
+MiVOLO) are cloned under `external/` at pinned commits and imported, not vendored.
+[SETUP.md](SETUP.md) is the full fresh-clone-to-runnable walkthrough, including the
+three weights that need a manual download and the dependency pins.
 
 ## Running the pipeline
 
