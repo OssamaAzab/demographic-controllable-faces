@@ -29,6 +29,13 @@ all on SDXL 1.0 + the fp16-fix VAE (HyperLoRA on RealVisXL — see note):
 | DreamBooth + demographic LoRA | 0.66 | 0.23 | 14.0 | 0.51 | 0.43 | 30.3 |
 | HyperLoRA (RealVisXL) | 0.56 | **0.39** | 13.6 | 0.80 | **0.58** | 36.7 |
 
+**Qualitative example** (the cell with the largest rescue gain, selected from the
+scores). Same reference and prompt `depicted as Latino`: PuLID and PuLID + demographic
+LoRA both miss the target (rendered Middle Eastern); only delayed injection recovers
+Latino, while AdaFace identity stays ~0.77 across all three.
+
+![Delayed-injection rescue: PuLID and PuLID + demographic LoRA miss the requested race; delayed injection recovers it at preserved identity](results/figures/qualitative_rescue.png)
+
 Three findings:
 
 1. **The trade-off is real and steep.** Identity and controllability pull against
