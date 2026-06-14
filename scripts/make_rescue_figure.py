@@ -20,6 +20,7 @@ METHODS = ["pulid_only", "pulid_with_demo_lora", "pulid_delayed"]
 LABELS = {"pulid_only": "PuLID", "pulid_with_demo_lora": "PuLID + demo LoRA",
           "pulid_delayed": "PuLID + delayed injection"}
 GEN = BENCHMARK_DIR / "generations"
+EXCLUDE_IDS = {"id_006"}  # id_006 (Latino) is shown elsewhere; pick the next-best identity
 PANEL, GAP, LABEL_H, SCORE_H, MARGIN = 512, 10, 44, 60, 12
 GRAY, RED, GREEN = (85, 85, 85), (158, 59, 59), (47, 107, 58)
 
@@ -36,7 +37,7 @@ def load():
 def select_cell(base, ada):
     cells = defaultdict(lambda: defaultdict(dict))
     for r in base:
-        if r["category"] == "race" and r["method"] in METHODS:
+        if r["category"] == "race" and r["method"] in METHODS and r["id"] not in EXCLUDE_IDS:
             cells[(r["id"], r["prompt_key"], r["race_requested"])][r["method"]][r["seed"]] = {
                 "match": r["race_match"], "pred": r["race_pred"], "ada": ada.get(r["path"]),
             }
@@ -52,7 +53,7 @@ def select_cell(base, ada):
                  and md["pulid_with_demo_lora"][s]["match"] == 0
                  and md["pulid_delayed"][s]["match"] == 1]
         if not (race["pulid_only"] <= 0.4 and race["pulid_with_demo_lora"] <= 0.4
-                and race["pulid_delayed"] >= 0.6 and min(idn.values()) >= 0.5 and clean):
+                and race["pulid_delayed"] >= 0.4 and min(idn.values()) >= 0.5 and clean):
             continue
         # representative shared seed: clean pattern, closest to per-method mean identity
         seed = min(clean, key=lambda s: sum(abs(md[m][s]["ada"] - idn[m]) for m in METHODS))

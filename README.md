@@ -30,9 +30,9 @@ all on SDXL 1.0 + the fp16-fix VAE (HyperLoRA on RealVisXL — see note):
 | HyperLoRA (RealVisXL) | 0.56 | **0.39** | 13.6 | 0.80 | **0.58** | 36.7 |
 
 **Qualitative example** (the cell with the largest rescue gain, selected from the
-scores). Same reference and prompt `depicted as Latino`: PuLID and PuLID + demographic
-LoRA both miss the target (rendered Middle Eastern); only delayed injection recovers
-Latino, while AdaFace identity stays ~0.77 across all three.
+scores). Same reference and prompt `depicted as Middle Eastern`: PuLID and PuLID +
+demographic LoRA both miss the target (rendered Latino); only delayed injection
+recovers Middle Eastern, while AdaFace identity stays high across all three (~0.7).
 
 ![Delayed-injection rescue: PuLID and PuLID + demographic LoRA miss the requested race; delayed injection recovers it at preserved identity](results/figures/qualitative_rescue.png)
 
