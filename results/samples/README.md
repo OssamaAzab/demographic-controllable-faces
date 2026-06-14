@@ -1,9 +1,8 @@
 # Sample gallery
 
 A curated subset of the benchmark generations (the full ~18k images are not
-shipped; regenerate them with the pipeline). Selection is fixed in
-`scripts/make_sample_gallery.py`. All on SDXL 1.0 + fp16-fix VAE, seed 42
-(HyperLoRA on RealVisXL v4.0).
+shipped; regenerate them with the pipeline), chosen to illustrate the findings
+below. All on SDXL 1.0 + fp16-fix VAE, seed 42 (HyperLoRA on RealVisXL v4.0).
 
 ## references
 
