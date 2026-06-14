@@ -1,5 +1,9 @@
 # Demographic-Controllable Identity-Preserving Face Generation
 
+![Python](https://img.shields.io/badge/python-3.12-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![Generations](https://img.shields.io/badge/generations-7%2C350%2B-blueviolet) ![Metrics](https://img.shields.io/badge/metrics-10-orange)
+
+**The finding:** a demographic LoRA that controls age and race well on its own stops working once stacked on a strong identity method — the identity signal overrides it — but a training-free fix, delaying identity injection for the first few diffusion steps, recovers the surface attributes (race) the stack loses.
+
 A reproducible benchmark of identity-preserving face-generation methods on the
 **identity vs demographic-controllability trade-off**, built on SDXL. Given a
 single reference photo and a prompt with demographic (age, race) or accessory
